@@ -1,0 +1,43 @@
+{
+    "title": "La réalité virtuelle : une nouvelle forme de narration et d'expérience",
+    "description": "La réalité virtuelle (VR) est un média interactif qui permet aux utilisateurs de s'immerger dans des environnements virtuels. Cette technologie a évolué considérablement ces dernières années, avec l'apparition de nouveaux matériaux et outils. Dans cet article, nous allons explorer les différentes applications possibles de la VR, ainsi que ses avantages et ses défis.",
+    "categories": [
+        "Technologie",
+        "Médias interactifs",
+        "Expérience utilisateur"
+    ],
+    "subtopics": [
+        {
+            "topic": "Principes de base de la VR",
+            "description": "La réalité virtuelle repose sur des principes physiques, tels que le tracking des mouvements de l'utilisateur et la réduction des effets de latence. Les appareils VR utilisent généralement un système de telescopie pour créer une image immersive."
+        },
+        {
+            "topic": "Applications de la VR",
+            "description": "La VR a de nombreuses applications, notamment en matière d'animation, de jeu vidéo et de réalité virtuelle. Elle peut également être utilisée pour la formation, le divertissement et l'éducation."
+        },
+        {
+            "topic": "Avantages de la VR",
+            "description": "Les avantages de la VR incluent une expérience immersive et engageante, ainsi qu'une possibilité de réduction des coûts associés à certaines activités (par exemple, le voyage en avion)."
+        }
+    ],
+    "key-terms": [
+        {
+            "term": "Trackers de mouvements",
+            "definition": "Les trackers de mouvements sont des dispositifs utilisés pour suivre les mouvements de l'utilisateur dans un environnement virtuel."
+        },
+        {
+            "term": "Oculus Rift",
+            "definition": "L'Oculus Rift est une plateforme de réalité virtuelle développée par Oculus, une société américaine spécialisée dans la technologie VR."
+        }
+    ],
+    "useful-links": [
+        {
+            "link": "https://www.oculus.com/en-us/technology/oculus-rift/",
+            "description": "Site officiel de l'Oculus Rift"
+        },
+        {
+            "link": "https://en.wikipedia.org/wiki/Virtual_reality",
+            "description": "Article sur la réalité virtuelle sur Wikipédia"
+        }
+    ]
+}
