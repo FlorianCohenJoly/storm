@@ -5,16 +5,15 @@ from dataclasses import dataclass, field
 from typing import Tuple, Dict
 import streamlit as st
 from abc import ABC, abstractmethod
-
-
+import json
 
 @dataclass(frozen=True)
 class Information:
     content: str
     citation_uuid: int
-    meta: Tuple[Tuple[str, str], ...]  # Tuple de tuples pour meta
+    meta: Tuple[Tuple[str, str], ...]
 
-class Agent(ABC): # Agent est une classe abstraite
+class Agent(ABC):
     def __init__(self, topic, role_name, action_description):
         self.topic = topic
         self.role_name = role_name
@@ -32,19 +31,20 @@ class EcrivainAgent(Agent):
 
     def generer_questions(self):
         return [
-            "Quels sont les principaux aspects de ce sujet ?",
-            "Quels sont les événements historiques importants liés à ce sujet ?",
-            "Quelles sont les différentes perspectives sur ce sujet ?"
+            "Quels sont les principaux aspects historiques de ce sujet ?",
+            "Quels sont les impacts économiques de ce sujet ?",
+            "Quels sont les aspects culturels de ce sujet ?",
+            "Quelles sont les controverses ou débats liés à ce sujet ?"
         ]
 
     def generer_plan(self):
-        knowledge = "\n".join([info.content for info in self.knowledge_base.knowledge.values()])  # Correction ici
+        knowledge = "\n".join([info.content for info in self.knowledge_base.knowledge.values()])
         plan = generer_texte(f"Génère un plan pour un article sur {self.topic} basé sur les informations suivantes : {knowledge}")
         return plan
 
     def generer_article(self, plan):
-        knowledge = "\n".join([info.content for info in self.knowledge_base.knowledge.values()])  # Correction ici
-        article = generer_texte(f"Rédige un article basé sur le plan suivant : {plan} et les informations suivantes : {knowledge}")
+        knowledge = "\n".join([info.content for info in self.knowledge_base.knowledge.values()])
+        article = generer_texte(f"Rédige un article détaillé et bien structuré sur {self.topic}, basé sur le plan suivant : {plan} et les informations suivantes : {knowledge}")
         return article
 
     def generate_utterance(self, input_data=None):
@@ -64,17 +64,31 @@ class ExpertAgent(Agent):
         self.conversation_history = []
 
     def repondre_question(self, question):
-        reponse = generer_texte(f"Réponds à la question suivante : {question}")
-        if reponse:
+        prompt = f"""
+        Réponds à la question suivante au format JSON.  Utilise la structure suivante :
+
+        ```json
+        {{
+          "question": "{question}",
+          "answer": "Texte de la réponse"
+        }}
+        ```
+        """
+        reponse_json_str = generer_texte(prompt)
+
+        try:
+            reponse_json = json.loads(reponse_json_str)
+            reponse = reponse_json["answer"]
+
             conversation_turn = ConversationTurn(
                 role=self.role_name,
                 utterance=reponse,
-                raw_utterance=reponse,
+                raw_utterance=reponse_json_str,
                 utterance_type="reponse"
             )
             self.conversation_history.append(conversation_turn)
 
-            meta_tuple = tuple({ "question": question}.items()) # Conversion du dict en tuple de tuples
+            meta_tuple = tuple({ "question": question}.items())
             information = Information(
                 content=reponse,
                 citation_uuid=-1,
@@ -89,10 +103,21 @@ class ExpertAgent(Agent):
                 st.exception(e)
 
             return conversation_turn
-        return None
+        except json.JSONDecodeError as e:
+            print(f"Erreur de parsing JSON: {e}")
+            print(f"Réponse brute du LLM: {reponse_json_str}")
+            reponse = f"Erreur: Réponse du LLM non parsable en JSON.  Veuillez reformuler votre question."
+
+            conversation_turn = ConversationTurn(
+                role=self.role_name,
+                utterance=reponse,
+                raw_utterance=reponse_json_str,
+                utterance_type="reponse"
+            )
+            return conversation_turn
 
     def generate_utterance(self, input_data=None):
-        if isinstance(input_data, str): # Si input_data est une question (str)
+        if isinstance(input_data, str):
             return self.repondre_question(input_data)
         return None
 
@@ -102,12 +127,10 @@ class KnowledgeBase:
         self.knowledge_base_lm = knowledge_base_lm
         self.depth = depth
         self.parent = parent
-        self.knowledge: Dict[str, Information] = {}  # Initialisation directe du dictionnaire
+        self.knowledge: Dict[str, Information] = {}
 
     def insert_information(self, path, information):
         self.knowledge[path] = information
-
-    # ... (Reste du code inchangé)
 
 class MyEngine(Engine):
     def __init__(self, lm_configs, ecrivain_agent, expert_agent):
@@ -126,18 +149,23 @@ class MyEngine(Engine):
         conversation_history = []
         questions = self.ecrivain_agent.generer_questions()
         for question in questions:
-            reponse = self.expert_agent.generate_utterance(question) # Appel de generate_utterance
+            reponse = self.expert_agent.generate_utterance(question)
             if reponse:
                 conversation_history.append(reponse)
         return conversation_history
 
     def run_outline_generation_module(self, **kwargs):
-        plan = self.ecrivain_agent.generate_utterance({"type": "plan"}) # Appel de generate_utterance
+        plan = self.ecrivain_agent.generate_utterance({"type": "plan"})
         return plan
 
     def run_article_generation_module(self, **kwargs):
         plan = kwargs.get("plan")
-        article = self.ecrivain_agent.generate_utterance({"type": "article", "plan": plan}) # Appel de generate_utterance
+        article_parts = {
+            "introduction": generer_texte(f"Rédige l'introduction de l'article sur {self.topic}, basé sur le plan suivant : {plan}"),
+            "body_paragraphs": generer_texte(f"Rédige le corps de l'article sur {self.topic}, basé sur le plan suivant : {plan}"),
+            "conclusion": generer_texte(f"Rédige la conclusion de l'article sur {self.topic}, basé sur le plan suivant : {plan}")
+        }
+        article = f"{article_parts['introduction']}\n\n{article_parts['body_paragraphs']}\n\n{article_parts['conclusion']}"
         return article
 
     def run_article_polishing_module(self, **kwargs):
