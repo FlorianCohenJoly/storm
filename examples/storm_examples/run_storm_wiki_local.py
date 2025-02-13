@@ -27,43 +27,42 @@ def run_app():
         expert = ExpertAgent(topic, modele_ollama)
         engine = MyEngine(lm_configs, knowledge_base, ecrivain, expert)  # knowledge_base est maintenant définie
 
-        conversation_history = engine.run(topic, personas=[])  # Passer les personas ici
-        plan = engine.run_outline_generation_module()
-        article = engine.run_article_generation_module(plan=plan)
-        final_article = engine.run_article_polishing_module(article=article)
+        conversation_history = engine.run(topic, personas=["persona1", "persona2"])  # Ajout de personas
 
         if conversation_history:
             st.write("Historique de la conversation :")
             for turn in conversation_history:
-                st.write(f"{turn.role} : {turn.utterance}")
+                print(turn)  # Débogage
+                st.write(f"{turn.role}: {turn.utterance}")
         else:
             st.write("Aucune conversation n'a eu lieu.")
 
+        plan = engine.run_outline_generation_module()
         if plan:
             st.write("Plan :")
-            st.write(plan)
+            st.write(plan.utterance)  # Accéder à l'attribut utterance de l'objet ConversationTurn
         else:
             st.write("Le modèle n'a pas généré de plan.")
 
-        
-
+        article = engine.run_article_generation_module(plan=plan)
         if article:
             st.write("### Article :")
             try:
-                article_data = json.loads(article)  # Convertir le JSON en dictionnaire
-                st.json(article_data)  # Afficher sous format JSON structuré
+                article_data = json.loads(article.utterance)  # Accéder à l'attribut utterance et parser le JSON
+                st.json(article_data)
             except json.JSONDecodeError:
-                st.markdown(article)  # Si c'est du texte brut, l'afficher proprement
+                st.markdown(article.utterance)
         else:
             st.write("Le modèle n'a pas généré d'article.")
 
+        final_article = engine.run_article_polishing_module(article=article)
         if final_article:
             st.write("### Article final :")
             try:
-                final_article_data = json.loads(final_article)
+                final_article_data = json.loads(final_article.utterance)  # Accéder à l'attribut utterance et parser le JSON
                 st.json(final_article_data)
             except json.JSONDecodeError:
-                st.markdown(final_article)
+                st.markdown(final_article.utterance)
         else:
             st.write("Le modèle n'a pas généré d'article final.")
 

@@ -63,14 +63,21 @@ class EcrivainAgent(Agent):
 
     
     def generate_utterance(self, input_data=None):
-        if input_data is None:
-            return self.generer_questions()[0] if self.personas else "Aucune question générée."
-        elif isinstance(input_data, dict) and "type" in input_data:
-            if input_data["type"] == "plan":
-                return self.generer_plan()
-            elif input_data["type"] == "article":
-                return self.generer_article(input_data["plan"])
-        return None
+        try:
+            if input_data is None:
+                question = self.generer_questions()[0] if self.personas else "Aucune question générée."
+                return ConversationTurn(role=self.role_name, utterance=question)
+            elif isinstance(input_data, dict) and "type" in input_data:
+                if input_data["type"] == "plan":
+                    plan = self.generer_plan()
+                    return ConversationTurn(role=self.role_name, utterance=plan)
+                elif input_data["type"] == "article":
+                    article = self.generer_article(input_data["plan"])
+                    return ConversationTurn(role=self.role_name, utterance=article)
+            return None
+        except Exception as e:
+            print(f"Erreur dans generate_utterance (EcrivainAgent): {e}")
+            return ConversationTurn(role=self.role_name, utterance=f"Erreur: {e}", utterance_type="erreur")
 
 class ExpertAgent(Agent):
     def __init__(self, topic, engine, personas=None):
@@ -80,8 +87,19 @@ class ExpertAgent(Agent):
         return self.generate_utterance(input_data)
 
     def repondre_question(self, question):
-        prompt = f"Réponds à la question : {question}. Considère les perspectives des personas suivants : {', '.join(self.personas)}."
-        return generer_texte(prompt)
+        try:
+            prompt = f"Réponds à la question : {question}. Considère les perspectives des personas suivants : {', '.join(self.personas)}."
+            response = generer_texte(prompt)
+
+            if response is None:
+                return ConversationTurn(role=self.role_name, utterance="Erreur: Impossible de générer une réponse.", utterance_type="erreur")
+
+            print(f"ExpertAgent: Réponse: {response}")  # Débogage
+            return ConversationTurn(role=self.role_name, utterance=response)
+        except Exception as e:
+            print(f"Erreur dans repondre_question (ExpertAgent): {e}")
+            return ConversationTurn(role=self.role_name, utterance=f"Erreur: {e}", utterance_type="erreur")
+
 
     def generate_utterance(self, input_data=None):
         utterance = super().generate_utterance(input_data) # On récupère le texte généré
@@ -106,13 +124,20 @@ class MyEngine(Engine):
         return self.run_knowledge_curation_module()
 
     def run_knowledge_curation_module(self):
-        questions = self.ecrivain_agent.generer_questions()
-        conversation_history = []
-        for q in questions:
-            expert_response = self.expert_agent.generate_utterance(q)
-            if expert_response: # Vérifier si la réponse existe
-                conversation_history.append(expert_response) # Ajouter la réponse à l'historique
-        return conversation_history
+        try:
+            questions = self.ecrivain_agent.generer_questions()
+            print(f"Questions générées: {questions}")
+            conversation_history = []
+            for q in questions:
+                expert_response = self.expert_agent.generate_utterance(q)
+                print(f"Réponse de l'expert: {expert_response}")
+                if expert_response:
+                    conversation_history.append(expert_response)
+            print(f"Historique de la conversation: {conversation_history}")
+            return conversation_history
+        except Exception as e:
+            print(f"Erreur dans run_knowledge_curation_module: {e}")
+            return []  # Retourner une liste vide en cas d'erreur
 
     def run_outline_generation_module(self):
         return self.ecrivain_agent.generate_utterance({"type": "plan"})
