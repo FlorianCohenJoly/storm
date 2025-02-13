@@ -1,5 +1,6 @@
 import streamlit as st
 from knowledge_storm import STORMWikiLMConfigs
+from knowledge_storm.dataclass import KnowledgeBase
 from knowledge_storm.lm import LitellmModel
 from my_engine import MyEngine, EcrivainAgent, ExpertAgent
 import json
@@ -20,11 +21,13 @@ def run_app():
     conversation_history = []
 
     if topic:
+        knowledge_base = KnowledgeBase(topic, modele_ollama, 0, None)  # Définir knowledge_base ICI
+        knowledge_base.knowledge = {}  # Correction : Ajout manuel de l'attribut missing
         ecrivain = EcrivainAgent(topic, modele_ollama)
         expert = ExpertAgent(topic, modele_ollama)
-        engine = MyEngine(lm_configs, ecrivain, expert)
+        engine = MyEngine(lm_configs, knowledge_base, ecrivain, expert)  # knowledge_base est maintenant définie
 
-        conversation_history = engine.run(topic)
+        conversation_history = engine.run(topic, personas=[])  # Passer les personas ici
         plan = engine.run_outline_generation_module()
         article = engine.run_article_generation_module(plan=plan)
         final_article = engine.run_article_polishing_module(article=article)
