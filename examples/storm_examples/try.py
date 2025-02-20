@@ -1,58 +1,28 @@
-"""
-STORM Wiki pipeline powered by local model hosted by Ollama server and You.com or Bing search engine.
-You need to set up the following environment variables to run this script:
-    - YDC_API_KEY: You.com API key; BING_SEARCH_API_KEY: Bing Search API key, SERPER_API_KEY: Serper API key, BRAVE_API_KEY: Brave API key, or TAVILY_API_KEY: Tavily API key
-You also need to have a Ollama server running with the llama3 model or other. Specify `--url`, `--port` and `--model` accordingly.
-
-Output will be structured as below
-args.output_dir/
-    topic_name/  # topic_name will follow convention of underscore-connected topic name w/o space and slash
-        conversation_log.json           # Log of information-seeking conversation
-        raw_search_results.json         # Raw search results from search engine
-        direct_gen_outline.txt          # Outline directly generated with LLM's parametric knowledge
-        storm_gen_outline.txt           # Outline refined with collected information
-        url_to_info.json                # Sources that are used in the final article
-        storm_gen_article.txt           # Final article generated
-        storm_gen_article_polished.txt  # Polished final article (if args.do_polish_article is True)
-"""
-
 import os
-import sys
 from argparse import ArgumentParser
 
 from dspy import Example
 
-from knowledge_storm import rm
-from knowledge_storm.lm import OllamaClient
-'''from knowledge_storm.rm import (
-    YouRM,
-    BingSearch,
-    BraveRM,
-    SerperRM,
-    DuckDuckGoSearchRM,
-    TavilySearchRM,
-    SearXNG,
-)'''
-from knowledge_storm.rm import VectorRM
 from knowledge_storm import (
     STORMWikiRunnerArguments,
     STORMWikiRunner,
     STORMWikiLMConfigs,
 )
-from knowledge_storm.utils import load_api_key
+from knowledge_storm.rm import VectorRM
+from knowledge_storm.lm import OllamaClient  # Use OllamaClient for local Docker image
+from knowledge_storm.utils import load_api_key, QdrantVectorStoreManager
 
 
 def main(args):
-    load_api_key(toml_file_path="secrets.toml")
+    load_api_key(toml_file_path=r"examples\storm_examples\secrets.toml")  # Load any necessary API keys
+
     lm_configs = STORMWikiLMConfigs()
 
     ollama_kwargs = {
         "model": args.model,
         "port": args.port,
         "url": args.url,
-        "stop": (
-            "\n\n---",
-        ),  # dspy uses "\n\n---" to separate examples. Open models sometimes generate this.
+        "stop": ("\n\n---",),  # dspy uses "\n\n---" to separate examples.
     }
 
     conv_simulator_lm = OllamaClient(max_tokens=500, **ollama_kwargs)
@@ -75,17 +45,39 @@ def main(args):
         max_thread_num=args.max_thread_num,
     )
 
-    # STORM is a knowledge curation system which consumes information from the retrieval module.
-    # Currently, the information source is the Internet and we use search engine API as the retrieval module.
+    # Créer/mettre à jour le VectorDB avec les documents du fichier CSV
+    QdrantVectorStoreManager.create_or_update_vector_store(
+        collection_name=args.collection_name,
+        vector_db_mode=args.vector_db_mode,
+        file_path=args.csv_file_path,
+        content_column="content",  # Adjust column name if needed
+        url_column="url",  # Adjust column name if needed
+        vector_store_path=args.offline_vector_db_dir,
+        url=args.online_vector_db_url,
+        qdrant_api_key=os.getenv("QDRANT_API_KEY"),
+        embedding_model=args.embedding_model,
+        device=args.device,
+        batch_size=args.embed_batch_size,
+    )
+
+    rm = VectorRM(
+        collection_name=args.collection_name,
+        embedding_model=args.embedding_model,
+        device=args.device,
+        k=engine_args.search_top_k,
+    )
+
+    if args.vector_db_mode == "offline":
+        rm.init_offline_vector_db(vector_store_path=args.offline_vector_db_dir)
+    elif args.vector_db_mode == "online":
+        rm.init_online_vector_db(
+            url=args.online_vector_db_url, api_key=os.getenv("QDRANT_API_KEY")
+        )
 
 
-    runner = STORMWikiRunner(engine_args, lm_configs,rm)
+    runner = STORMWikiRunner(engine_args, lm_configs, rm)
 
-    # Open LMs are generally weaker in following output format.
-    # One way for mitigation is to add one-shot example to the prompt to exemplify the desired output format.
-    # For example, we can add the following examples to the two prompts used in StormPersonaGenerator.
-    # Note that the example should be an object of dspy.Example with fields matching the InputField
-    # and OutputField in the prompt (i.e., dspy.Signature).
+    # Examples (same as before)
     find_related_topic_example = Example(
         topic="Knowledge Curation",
         related_topics="https://en.wikipedia.org/wiki/Knowledge_management\n"
@@ -95,29 +87,16 @@ def main(args):
     gen_persona_example = Example(
         topic="Knowledge Curation",
         examples="Title: Knowledge management\n"
-        "Table of Contents: History\nResearch\n  Dimensions\n  Strategies\n  Motivations\nKM technologies"
+        "Table of Contents: History\nResearch\n Dimensions\n Strategies\n Motivations\nKM technologies"
         "\nKnowledge barriers\nKnowledge retention\nKnowledge audit\nKnowledge protection\n"
-        "  Knowledge protection methods\n    Formal methods\n    Informal methods\n"
-        "  Balancing knowledge protection and knowledge sharing\n  Knowledge protection risks",
+        " Knowledge protection methods\n Formal methods\n Informal methods\n"
+        " Balancing knowledge protection and knowledge sharing\n Knowledge protection risks",
         personas="1. Historian of Knowledge Systems: This editor will focus on the history and evolution of knowledge curation. They will provide context on how knowledge curation has changed over time and its impact on modern practices.\n"
         "2. Information Science Professional: With insights from 'Information science', this editor will explore the foundational theories, definitions, and philosophy that underpin knowledge curation\n"
         "3. Digital Librarian: This editor will delve into the specifics of how digital libraries operate, including software, metadata, digital preservation.\n"
         "4. Technical expert: This editor will focus on the technical aspects of knowledge curation, such as common features of content management systems.\n"
         "5. Museum Curator: The museum curator will contribute expertise on the curation of physical items and the transition of these practices into the digital realm.",
     )
-    runner.storm_knowledge_curation_module.persona_generator.create_writer_with_persona.find_related_topic.demos = [
-        find_related_topic_example
-    ]
-    runner.storm_knowledge_curation_module.persona_generator.create_writer_with_persona.gen_persona.demos = [
-        gen_persona_example
-    ]
-
-    # A trade-off of adding one-shot example is that it will increase the input length of the prompt. Also, some
-    # examples may be very long (e.g., an example for writing a section based on the given information), which may
-    # confuse the model. For these cases, you can create a pseudo-example that is short and easy to understand to steer
-    # the model's output format.
-    # For example, we can add the following pseudo-examples to the prompt used in WritePageOutlineFromConv and
-    # ConvToSection.
     write_page_outline_example = Example(
         topic="Example Topic",
         conv="Wikipedia Writer: ...\nExpert: ...\nWikipedia Writer: ...\nExpert: ...",
@@ -128,9 +107,6 @@ def main(args):
         "# New Section 2\n"
         "# New Section 3\n## New Subsection 1\n## New Subsection 2\n## New Subsection 3",
     )
-    runner.storm_outline_generation_module.write_outline.write_page_outline.demos = [
-        write_page_outline_example
-    ]
     write_section_example = Example(
         info="[1]\nInformation in document 1\n[2]\nInformation in document 2\n[3]\nInformation in document 3",
         topic="Example Topic",
@@ -139,9 +115,20 @@ def main(args):
         "This is an example sentence [1]. This is another example sentence [2][3].\n"
         "## Subsection 2\nThis is one more example sentence [1].",
     )
+
+    runner.storm_knowledge_curation_module.persona_generator.create_writer_with_persona.find_related_topic.demos = [
+        find_related_topic_example
+    ]
+    runner.storm_knowledge_curation_module.persona_generator.create_writer_with_persona.gen_persona.demos = [
+        gen_persona_example
+    ]
+    runner.storm_outline_generation_module.write_outline.write_page_outline.demos = [
+        write_page_outline_example
+    ]
     runner.storm_article_generation.section_gen.write_section.demos = [
         write_section_example
     ]
+
 
     topic = input("Topic: ")
     runner.run(
@@ -154,7 +141,6 @@ def main(args):
     runner.post_run()
     runner.summary()
 
-
 if __name__ == "__main__":
     parser = ArgumentParser()
     # global arguments
@@ -165,12 +151,12 @@ if __name__ == "__main__":
         "--port", type=int, default=11434, help="Port of the Ollama server."
     )
     parser.add_argument(
-        "--model", type=str, default="llama3:latest", help="Model of the Ollama server."
+        "--model", type=str, default="llama3.2:latest", help="Model of the Ollama server."
     )
     parser.add_argument(
         "--output-dir",
         type=str,
-        default="./results/ollama",
+        default="./results/gpt_retrieval",
         help="Directory to store the outputs.",
     )
     parser.add_argument(
@@ -181,11 +167,54 @@ if __name__ == "__main__":
         "part can speed up by using multiple threads. Consider reducing it if keep getting "
         '"Exceed rate limit" error when calling LM API.',
     )
+    # provide local corpus and set up vector db
     parser.add_argument(
-        "--retriever",
+        "--collection-name",
         type=str,
-        choices=["bing", "you", "brave", "serper", "duckduckgo", "tavily", "searxng"],
-        help="The search engine API to use for retrieving information.",
+        default="my_documents",
+        help="The collection name for vector store.",
+    )
+    parser.add_argument(
+        "--embedding_model",
+        type=str,
+        default="BAAI/bge-m3",
+        help="The collection name for vector store.",
+    )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="cpu",
+        help="The device used to run the retrieval model (mps, cuda, cpu, etc).",
+    )
+    parser.add_argument(
+        "--vector-db-mode",
+        type=str,
+        choices=["offline", "online"],
+        help="The mode of the Qdrant vector store (offline or online).",
+    )
+    parser.add_argument(
+        "--offline-vector-db-dir",
+        type=str,
+        default="./vector_store",
+        help="If use offline mode, please provide the directory to store the vector store.",
+    )
+    parser.add_argument(
+        "--online-vector-db-url",
+        type=str,
+        help="If use online mode, please provide the url of the Qdrant server.",
+    )
+    parser.add_argument(
+        "--csv-file-path",
+        type=str,
+        default=None,
+        help="The path of the custom document corpus in CSV format. The CSV file should include "
+        "content, title, url, and description columns.",
+    )
+    parser.add_argument(
+        "--embed-batch-size",
+        type=int,
+        default=64,
+        help="Batch size for embedding the documents in the csv file.",
     )
     # stage of the pipeline
     parser.add_argument(
@@ -240,5 +269,4 @@ if __name__ == "__main__":
         action="store_true",
         help="If True, remove duplicate content from the article.",
     )
-
     main(parser.parse_args())

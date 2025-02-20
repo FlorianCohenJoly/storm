@@ -20,6 +20,7 @@ class StormOutlineGenerationModule(OutlineGenerationModule):
         self.write_outline = WriteOutline(engine=self.outline_gen_lm)
 
     def generate_outline(
+           
         self,
         topic: str,
         information_table: StormInformationTable,
