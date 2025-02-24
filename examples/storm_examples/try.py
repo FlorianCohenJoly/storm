@@ -12,6 +12,10 @@ from knowledge_storm.rm import VectorRM
 from knowledge_storm.lm import OllamaClient  # Use OllamaClient for local Docker image
 from knowledge_storm.utils import load_api_key, QdrantVectorStoreManager
 
+import torch
+print(torch.cuda.is_available())
+
+
 def truncate_prompt(prompt, limit=1024):
     """Tronque le prompt pour respecter la limite de contexte."""
     tokens = prompt.split()  # Simple split sur les espaces (peut être amélioré avec un tokenizer)
@@ -155,7 +159,7 @@ if __name__ == "__main__":
     parser.add_argument("--max-thread-num", type=int, default=2)  # Réduction des threads pour éviter surcharge
     parser.add_argument("--collection-name", type=str, default="my_documents")
     parser.add_argument("--embedding_model", type=str, default="BAAI/bge-m3")
-    parser.add_argument("--device", type=str, default="cpu")
+    parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--vector-db-mode", type=str, choices=["offline", "online"])
     parser.add_argument("--offline-vector-db-dir", type=str, default="./vector_store")
     parser.add_argument("--online-vector-db-url", type=str)
